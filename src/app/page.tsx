@@ -1,9 +1,9 @@
-import DealCard from "@/components/DealCard";
-import { deals } from "@/data/deals";
+import DealsGrid from "@/components/DealsGrid";
+import { getDeals } from "@/lib/get-deals";
 
-const categories = ["All", "Electronics", "Home", "Tools", "Kitchen", "Outdoors", "Under $25"];
+export default async function Home() {
+  const deals = await getDeals();
 
-export default function Home() {
   return (
     <main>
       <header className="site-header">
@@ -31,18 +31,10 @@ export default function Home() {
             <p className="eyebrow">TODAY&apos;S FINDS</p>
             <h2>Good deals, right now.</h2>
           </div>
-          <p className="updated">Sample data for MVP</p>
+          <p className="updated">{deals.length} hand-picked deals</p>
         </div>
 
-        <div className="filters">
-          {categories.map((category, index) => (
-            <button className={index === 0 ? "active" : ""} key={category}>{category}</button>
-          ))}
-        </div>
-
-        <div className="deal-grid">
-          {deals.map((deal) => <DealCard key={deal.id} deal={deal} />)}
-        </div>
+        <DealsGrid deals={deals} />
       </section>
 
       <section className="manifesto" id="about">
