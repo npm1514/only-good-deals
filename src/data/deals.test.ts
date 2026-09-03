@@ -31,6 +31,11 @@ describe("deals data", () => {
     expect(KNOWN_CATEGORIES).toContain(deal.category);
   });
 
+  it.each(deals)("gives deal #%# a valid, non-future verifiedAt date ($title)", (deal) => {
+    expect(deal.verifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(new Date(deal.verifiedAt).getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
   it("never shows an Amazon-scraped rating or review count (Associates Program rule)", () => {
     for (const deal of deals) {
       expect(deal).not.toHaveProperty("rating");

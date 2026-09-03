@@ -9,7 +9,7 @@
 
 // Not a secret — Associate tags are always visible in the resulting URL.
 // The env var lets you override it locally/per-environment without a code change.
-const DEFAULT_ASSOCIATE_TAG = "npmarucci-20";
+const DEFAULT_ASSOCIATE_TAG = "only-good-deals-20";
 
 export const ASSOCIATE_TAG = process.env.AMAZON_ASSOCIATE_TAG || DEFAULT_ASSOCIATE_TAG;
 

@@ -10,6 +10,7 @@ const sampleDeal: Deal = {
   price: 25,
   originalPrice: 100,
   note: "A great test speaker for the price.",
+  verifiedAt: "2026-09-03",
   image: "https://placehold.co/900x700/e8e3d9/1a1a1a?text=Test+Speaker",
   searchQuery: "Test Speaker",
   tag: "Huge drop",
@@ -30,6 +31,11 @@ describe("DealCard", () => {
 
     // 25 vs 100 is a 75% discount.
     expect(screen.getByText("-75%")).toBeInTheDocument();
+  });
+
+  it("shows when the price was last verified, formatted as a readable date", () => {
+    render(<DealCard deal={sampleDeal} />);
+    expect(screen.getByText("Price verified Sep 3")).toBeInTheDocument();
   });
 
   it("links out to a correctly tagged affiliate URL, marked as sponsored", () => {

@@ -2,6 +2,12 @@ import Image from "next/image";
 import type { Deal } from "@/data/deals";
 import { buildAffiliateUrl } from "@/lib/amazon";
 
+function formatVerifiedDate(isoDate: string): string {
+  // Parse as UTC so the displayed date doesn't shift a day depending on the viewer's timezone.
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 export default function DealCard({ deal }: { deal: Deal }) {
   const discount = Math.round((1 - deal.price / deal.originalPrice) * 100);
   const url = buildAffiliateUrl(deal);
@@ -27,6 +33,7 @@ export default function DealCard({ deal }: { deal: Deal }) {
           <strong>${deal.price.toFixed(2)}</strong>
           {deal.originalPrice > deal.price && <del>${deal.originalPrice.toFixed(2)}</del>}
         </div>
+        <p className="verified">Price verified {formatVerifiedDate(deal.verifiedAt)}</p>
         <a className="deal-button" href={url} target="_blank" rel="sponsored noopener noreferrer">
           See the deal →
         </a>
