@@ -1,4 +1,5 @@
 import DealsGrid from "@/components/DealsGrid";
+import { Brand } from "@/components/Logo";
 import { getDeals } from "@/lib/get-deals";
 
 export default async function Home() {
@@ -7,7 +8,7 @@ export default async function Home() {
   return (
     <main>
       <header className="site-header">
-        <a className="brand" href="#">ONLY GOOD DEALS<span>.</span></a>
+        <a className="brand" href="#"><Brand /></a>
         <nav>
           <a href="#deals">Deals</a>
           <a href="#about">How it works</a>
@@ -47,7 +48,7 @@ export default async function Home() {
       </section>
 
       <footer>
-        <div className="brand">ONLY GOOD DEALS<span>.</span></div>
+        <Brand size={22} showBadge={false} className="footer-brand" />
         <p>As an Amazon Associate I earn from qualifying purchases.</p>
       </footer>
     </main>
