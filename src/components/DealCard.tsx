@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { Deal } from "@/data/deals";
 
 export default function DealCard({ deal }: { deal: Deal }) {
@@ -6,7 +7,13 @@ export default function DealCard({ deal }: { deal: Deal }) {
   return (
     <article className="deal-card">
       <div className="image-wrap">
-        <img src={deal.image} alt={deal.title} />
+        <Image
+          src={deal.image}
+          alt={deal.title}
+          fill
+          sizes="(min-width: 1024px) 320px, (min-width: 640px) 45vw, 90vw"
+          style={{ objectFit: "cover" }}
+        />
         <span className="discount">-{discount}%</span>
         {deal.tag && <span className="deal-tag">{deal.tag}</span>}
       </div>
