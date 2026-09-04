@@ -1,6 +1,6 @@
 import { deals } from "./deals";
 
-const KNOWN_CATEGORIES = ["Electronics", "Home", "Tools", "Kitchen", "Outdoors"];
+const KNOWN_CATEGORIES = ["Electronics", "Home", "Tools", "Kitchen", "Outdoors", "Personal Care"];
 
 describe("deals data", () => {
   it("has a healthy number of deals", () => {

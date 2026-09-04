@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import DealCard from "./DealCard";
 import type { Deal } from "@/data/deals";
 
-const CATEGORIES = ["All", "Electronics", "Home", "Tools", "Kitchen", "Outdoors", "Under $25"];
+const CATEGORIES = ["All", "Electronics", "Home", "Tools", "Kitchen", "Outdoors", "Personal Care", "Under $25"];
 const UNDER_25 = "Under $25";
 const UNDER_25_THRESHOLD = 25;
 
