@@ -1,6 +1,11 @@
 import DealsGrid from "@/components/DealsGrid";
+import MembershipOffers from "@/components/MembershipOffers";
 import { Brand } from "@/components/Logo";
 import { getDeals } from "@/lib/get-deals";
+import { buildTaggedUrl } from "@/lib/amazon";
+
+// Re-checks Keepa on this cadence instead of per-visitor (see keepa.ts).
+export const revalidate = 300;
 
 export default async function Home() {
   const deals = await getDeals();
@@ -19,11 +24,14 @@ export default async function Home() {
         <div className="eyebrow">THE GOOD STUFF ONLY</div>
         <h1>Skip the fake sales.<br /><em>Find the good deals.</em></h1>
         <p>We dig through discounts and surface the stuff that&apos;s actually worth buying.</p>
-        <a className="hero-cta" href="#deals">Show me the deals ↓</a>
+        <div className="hero-ctas">
+          <a className="hero-cta" href="#deals">Show me the deals ↓</a>
+          <a className="hero-cta-secondary" href={buildTaggedUrl("https://www.amazon.com")} target="_blank" rel="sponsored noopener noreferrer">Just shop Amazon →</a>
+        </div>
       </section>
 
       <section className="ticker" aria-label="site benefits">
-        <span>REAL DISCOUNTS</span><b>✦</b><span>NO JUNK</span><b>✦</b><span>CURATED DAILY</span><b>✦</b><span>ONLY GOOD DEALS</span>
+        <span>REAL DISCOUNTS</span><b>✦</b><span>NO JUNK</span><b>✦</b><span>TRACKED LIVE</span><b>✦</b><span>ONLY GOOD DEALS</span>
       </section>
 
       <section className="deals-section" id="deals">
@@ -32,11 +40,13 @@ export default async function Home() {
             <p className="eyebrow">TODAY&apos;S FINDS</p>
             <h2>Good deals, right now.</h2>
           </div>
-          <p className="updated">{deals.length} hand-picked deals</p>
+          <p className="updated">{deals.length} deals, tracked live</p>
         </div>
 
         <DealsGrid deals={deals} />
       </section>
+
+      <MembershipOffers />
 
       <section className="manifesto" id="about">
         <div className="manifesto-number">01</div>

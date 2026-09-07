@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Only Good Deals | Deals actually worth buying",
-  description: "A curated feed of unusually good deals. No junk. No fake bargains. Only good deals."
+  description: "Deals tracked live via Keepa's price-history data. No junk. No fake bargains. Only good deals."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
