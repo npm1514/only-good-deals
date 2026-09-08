@@ -1,19 +1,54 @@
+import Link from "next/link";
 import DealsGrid from "@/components/DealsGrid";
 import MembershipOffers from "@/components/MembershipOffers";
 import { Brand } from "@/components/Logo";
 import { getDeals } from "@/lib/get-deals";
-import { buildTaggedUrl } from "@/lib/amazon";
+import { buildAffiliateUrl, buildTaggedUrl } from "@/lib/amazon";
 
 // Re-checks Keepa on this cadence instead of per-visitor (see keepa.ts).
 export const revalidate = 300;
 
+const SITE_URL = "https://www.only-good-deals.com";
+
+function jsonLd(data: unknown): string {
+  return JSON.stringify(data).replace(/</g, "\\u003c");
+}
+
 export default async function Home() {
   const deals = await getDeals();
 
+  const websiteJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "Only Good Deals",
+    url: SITE_URL,
+    description: "Deals tracked live and checked against real price history. No junk. No fake bargains. Only good deals.",
+    publisher: { "@type": "Organization", name: "Only Good Deals", url: SITE_URL },
+  };
+
+  const dealsJsonLd =
+    deals.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          name: "Today's deals on Only Good Deals",
+          itemListElement: deals.map((deal, index) => ({
+            "@type": "ListItem",
+            position: index + 1,
+            name: deal.title,
+            url: buildAffiliateUrl(deal),
+          })),
+        }
+      : null;
+
   return (
     <main>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(websiteJsonLd) }} />
+      {dealsJsonLd && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(dealsJsonLd) }} />
+      )}
       <header className="site-header">
-        <a className="brand" href="#"><Brand /></a>
+        <Link className="brand" href="/"><Brand /></Link>
         <nav>
           <a href="#deals">Deals</a>
           <a href="#about">How it works</a>
