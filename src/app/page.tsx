@@ -1,12 +1,18 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import DealsGrid from "@/components/DealsGrid";
 import MembershipOffers from "@/components/MembershipOffers";
+import SeenDealsTracker from "@/components/SeenDealsTracker";
 import { Brand } from "@/components/Logo";
 import { getDeals } from "@/lib/get-deals";
 import { buildAffiliateUrl, buildTaggedUrl } from "@/lib/amazon";
 
-// Re-checks Keepa on this cadence instead of per-visitor (see keepa.ts).
-export const revalidate = 300;
+const SEEN_DEALS_COOKIE = "seen_deal_asins";
+
+// Fully dynamic: re-checks Keepa on every request rather than on a timer.
+// At low traffic this is well inside the Keepa token budget (see the cost
+// breakdown in keepa.ts) -- revisit if traffic grows enough to matter.
+export const revalidate = 0;
 
 const SITE_URL = "https://www.only-good-deals.com";
 
@@ -15,7 +21,18 @@ function jsonLd(data: unknown): string {
 }
 
 export default async function Home() {
-  const deals = await getDeals();
+  // Skip live deals this visitor already saw (recorded client-side by
+  // SeenDealsTracker below) so refreshing the page surfaces different
+  // ones instead of the same feed. Partner (Creator Connections) deals are
+  // never excluded this way -- see the comment on getDeals for why.
+  const cookieStore = await cookies();
+  const seenAsins = new Set(
+    (cookieStore.get(SEEN_DEALS_COOKIE)?.value ?? "").split(",").filter(Boolean)
+  );
+  const deals = await getDeals(seenAsins);
+  const liveDealAsins = deals
+    .filter((deal) => deal.tag === "Live find" && deal.asin)
+    .map((deal) => deal.asin as string);
 
   const websiteJsonLd = {
     "@context": "https://schema.org",
@@ -79,6 +96,7 @@ export default async function Home() {
         </div>
 
         <DealsGrid deals={deals} />
+        <SeenDealsTracker asins={liveDealAsins} />
       </section>
 
       <MembershipOffers />

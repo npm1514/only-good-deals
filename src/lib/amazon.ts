@@ -7,9 +7,14 @@ export type AffiliateLinkable = {
   /** Direct product-page link when present; otherwise falls back to search. */
   asin?: string;
   searchQuery: string;
+  /** A specific tracking link to use verbatim instead (e.g. a Creator Connections Affiliate+ link). */
+  affiliateUrlOverride?: string;
 };
 
 export function buildAffiliateUrl(deal: AffiliateLinkable): string {
+  if (deal.affiliateUrlOverride) {
+    return deal.affiliateUrlOverride;
+  }
   if (deal.asin) {
     return `https://www.amazon.com/dp/${deal.asin}?tag=${ASSOCIATE_TAG}`;
   }

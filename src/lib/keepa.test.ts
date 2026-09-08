@@ -52,3 +52,124 @@ describe("keepaCandidateToDeal", () => {
     expect(stableIdFromAsin("B000TEST01")).toBe(stableIdFromAsin("B000TEST01"));
   });
 });
+
+jest.mock("../data/creator-connections", () => ({
+  creatorConnectionCandidates: [
+    {
+      asin: "B000GOOD01",
+      brand: "Acme",
+      campaignName: "Fall Sale",
+      affiliateUrl: "https://www.amazon.com/dp/B000GOOD01?ascsubtag=partner-good",
+    },
+    {
+      asin: "B000BAD01",
+      brand: "Acme",
+      campaignName: "No Real Discount",
+      affiliateUrl: "https://www.amazon.com/dp/B000BAD01?ascsubtag=partner-bad",
+    },
+  ],
+}));
+
+describe("fetchCreatorConnectionDeals", () => {
+  const originalFetch = global.fetch;
+  const originalApiKey = process.env.KEEPA_API_KEY;
+
+  beforeEach(() => {
+    process.env.KEEPA_API_KEY = "test-key";
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    process.env.KEEPA_API_KEY = originalApiKey;
+    jest.resetModules();
+  });
+
+  it("includes a candidate that clears the real-discount bar, using its Affiliate+ link verbatim, and drops one that doesn't", async () => {
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const asin = url.includes("B000GOOD01") ? "B000GOOD01" : "B000BAD01";
+      const body =
+        asin === "B000GOOD01"
+          ? { title: "Acme Fall Jacket", stats: { current: [-1, 1999], avg90: [-1, 3999] } }
+          : { title: "Acme Full-Price Mug", stats: { current: [-1, 1999], avg90: [-1, 2000] } };
+      return {
+        ok: true,
+        json: async () => ({ products: [body] }),
+      } as Response;
+    }) as unknown as typeof fetch;
+
+    const { fetchCreatorConnectionDeals } = await import("./keepa");
+    const deals = await fetchCreatorConnectionDeals();
+
+    expect(deals).toHaveLength(1);
+    expect(deals[0].asin).toBe("B000GOOD01");
+    expect(deals[0].title).toBe("Acme Fall Jacket");
+    expect(deals[0].tag).toBe("Partner deal");
+    expect(deals[0].price).toBeCloseTo(19.99);
+    expect(deals[0].originalPrice).toBeCloseTo(39.99);
+    // The Affiliate+ link is used exactly as given, not rebuilt with our own tag.
+    const { buildAffiliateUrl } = await import("./amazon");
+    expect(buildAffiliateUrl(deals[0])).toBe("https://www.amazon.com/dp/B000GOOD01?ascsubtag=partner-good");
+  });
+});
+
+describe("fetchLiveHomepageDeals", () => {
+  const originalFetch = global.fetch;
+  const originalApiKey = process.env.KEEPA_API_KEY;
+
+  beforeEach(() => {
+    process.env.KEEPA_API_KEY = "test-key";
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    process.env.KEEPA_API_KEY = originalApiKey;
+    jest.resetModules();
+  });
+
+  function dealRow(asin: string, currentCents: number, avgCents: number) {
+    return {
+      asin,
+      title: `Widget ${asin}`,
+      rootCat: null,
+      current: [undefined, currentCents],
+      avg: [undefined, [undefined, avgCents]],
+      deltaPercent: [undefined, [undefined, 50]],
+      lastUpdate: -1,
+    };
+  }
+
+  function mockDealsResponse(rows: ReturnType<typeof dealRow>[]) {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({ deals: { categoryIds: [], categoryNames: [], dr: rows } }),
+    })) as unknown as typeof fetch;
+  }
+
+  it("skips ASINs already shown to this visitor, surfacing a different qualifying deal instead", async () => {
+    mockDealsResponse([dealRow("B000AAA01", 1999, 3999), dealRow("B000BBB01", 2999, 4999)]);
+
+    const { fetchLiveHomepageDeals } = await import("./keepa");
+    const deals = await fetchLiveHomepageDeals(new Set(["B000AAA01"]));
+
+    expect(deals.map((d) => d.asin)).toEqual(["B000BBB01"]);
+  });
+
+  it("falls back to showing everything again rather than an empty grid once every qualifying deal has been seen", async () => {
+    mockDealsResponse([dealRow("B000AAA01", 1999, 3999)]);
+
+    const { fetchLiveHomepageDeals } = await import("./keepa");
+    const deals = await fetchLiveHomepageDeals(new Set(["B000AAA01"]));
+
+    expect(deals.map((d) => d.asin)).toEqual(["B000AAA01"]);
+  });
+
+  it("still returns nothing when there's genuinely no qualifying deal, exclude list aside", async () => {
+    mockDealsResponse([]);
+
+    const { fetchLiveHomepageDeals } = await import("./keepa");
+    const deals = await fetchLiveHomepageDeals(new Set());
+
+    expect(deals).toEqual([]);
+  });
+});

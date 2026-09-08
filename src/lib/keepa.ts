@@ -1,6 +1,7 @@
 // Server-side Keepa client. KEEPA_API_KEY never reaches the browser.
 
 import type { Deal } from "@/data/deals";
+import { creatorConnectionCandidates } from "@/data/creator-connections";
 
 export type KeepaFilters = {
   maxPriceDollars: number;
@@ -60,8 +61,8 @@ type RawKeepaDeal = {
   lastUpdate?: number;
 };
 
-// cacheOptions defaults to always-fresh; fetchLiveHomepageDeals overrides it
-// with a time-based revalidate instead (see that function for why).
+// Always-fresh by default; every caller currently wants that (see
+// fetchLiveHomepageDeals for the token-budget math behind why that's safe).
 export async function fetchKeepaCandidates(
   filters: KeepaFilters,
   cacheOptions: RequestInit = { cache: "no-store" }
@@ -180,22 +181,37 @@ export function stableIdFromAsin(asin: string): number {
   return 900000 + (Math.abs(hash) % 99999);
 }
 
+const MIN_REAL_DISCOUNT = 0.15;
+
+// The one quality gate every deal on the site has to clear, regardless of
+// where it was sourced from (live Keepa scan or a Creator Connections
+// candidate) — real current price meaningfully below the real 90-day
+// average, both actually known. Used by keepaCandidateToDeal below and by
+// fetchCreatorConnectionDeals, so a sponsored campaign gets no exception.
+function verifiedPricing(
+  currentPriceCents: number | null,
+  avgPriceCents: number | null
+): { price: number; originalPrice: number } | null {
+  if (currentPriceCents == null || avgPriceCents == null) return null;
+  const price = currentPriceCents / 100;
+  const originalPrice = avgPriceCents / 100;
+  if (originalPrice <= price) return null;
+  if (1 - price / originalPrice < MIN_REAL_DISCOUNT) return null;
+  return { price, originalPrice };
+}
+
 // Returns null if the candidate is missing price data or the real discount
 // (current vs. avg) is too small/unreliable to show unverified.
 export function keepaCandidateToDeal(candidate: KeepaCandidate, checkedAt: Date): Deal | null {
-  if (candidate.currentPriceCents == null || candidate.avgPriceCents == null) return null;
-
-  const price = candidate.currentPriceCents / 100;
-  const originalPrice = candidate.avgPriceCents / 100;
-  if (originalPrice <= price) return null;
-  if (1 - price / originalPrice < 0.15) return null;
+  const pricing = verifiedPricing(candidate.currentPriceCents, candidate.avgPriceCents);
+  if (!pricing) return null;
 
   return {
     id: stableIdFromAsin(candidate.asin),
     title: candidate.title,
     category: mapCategory(candidate.categoryName),
-    price,
-    originalPrice,
+    price: pricing.price,
+    originalPrice: pricing.originalPrice,
     note: "Found automatically by our Keepa price-tracker — not hand-reviewed, but the discount is checked against real price history.",
     verifiedAt: checkedAt.toISOString().slice(0, 10),
     priceCheckedAt: checkedAt.toISOString(),
@@ -214,17 +230,27 @@ const HOMEPAGE_LIVE_FILTERS: KeepaFilters = {
   limit: 60,
 };
 
-// Not re-fetched per visitor — Keepa's Deal Query costs 5 tokens/call and
-// the Starter plan refills 20/minute, so that would exhaust the budget
-// under real traffic. Instead the homepage revalidates on a timer (see
-// `export const revalidate` in page.tsx), and every card shows exactly
-// when it was checked, so freshness is honest rather than implied.
+// Re-fetched on every request now (see `export const revalidate = 0` in
+// page.tsx) — the Deal Query's flat 5-token cost plus the Creator
+// Connections product checks stay well inside the Starter plan's
+// 20-tokens/minute budget at this traffic level. Every card still shows
+// exactly when it was checked, so freshness is honest either way.
 export async function fetchLiveHomepageDeals(excludeAsins: Set<string>): Promise<Deal[]> {
-  const candidates = await fetchKeepaCandidates(HOMEPAGE_LIVE_FILTERS, {
-    next: { revalidate: 300 },
-  });
+  const candidates = await fetchKeepaCandidates(HOMEPAGE_LIVE_FILTERS);
   const checkedAt = new Date();
 
+  const deals = buildDeals(candidates, checkedAt, excludeAsins);
+  if (deals.length > 0 || excludeAsins.size === 0) return deals;
+
+  // Every qualifying deal today has already been shown to this visitor
+  // (see SeenDealsTracker / the seen_deal_asins cookie read in page.tsx) --
+  // rather than render an empty grid, show them again instead of leaving
+  // the page looking broken. Small qualifying pools cycle back faster than
+  // large ones; that's an acceptable trade for never showing nothing.
+  return buildDeals(candidates, checkedAt, new Set());
+}
+
+function buildDeals(candidates: KeepaCandidate[], checkedAt: Date, excludeAsins: Set<string>): Deal[] {
   const deals: Deal[] = [];
   const seen = new Set<string>();
   for (const candidate of candidates) {
@@ -235,4 +261,80 @@ export async function fetchLiveHomepageDeals(excludeAsins: Set<string>): Promise
     deals.push(deal);
   }
   return deals;
+}
+
+// --- Creator Connections: verify-then-include, never sponsored placement --
+
+// Looks up one ASIN's real price history directly (Keepa's Product
+// endpoint), as opposed to fetchKeepaCandidates' bulk Deal-query endpoint.
+// Needed because a Creator Connections candidate isn't necessarily one of
+// today's live Keepa deals — it might not be discounted at all, which is
+// exactly what we're checking.
+async function fetchKeepaProductStats(
+  asin: string,
+  priceType: KeepaFilters["priceType"] = "new"
+): Promise<{ currentPriceCents: number | null; avgPriceCents: number | null; title: string | null } | null> {
+  const apiKey = process.env.KEEPA_API_KEY;
+  if (!apiKey) {
+    throw new KeepaConfigError("KEEPA_API_KEY is not set in .env.local");
+  }
+
+  const priceTypeCode = PRICE_TYPE_CODES[priceType];
+  const url = `https://api.keepa.com/product?key=${encodeURIComponent(apiKey)}&domain=1&asin=${encodeURIComponent(asin)}&stats=90`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { cache: "no-store" });
+  } catch {
+    throw new Error(
+      "Couldn't reach api.keepa.com — this looks like a network-allowlist issue, not a Keepa problem."
+    );
+  }
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  const product = data?.products?.[0];
+  if (!product) return null;
+
+  return {
+    currentPriceCents: positiveOrNull(product.stats?.current?.[priceTypeCode]),
+    avgPriceCents: positiveOrNull(product.stats?.avg90?.[priceTypeCode]),
+    title: typeof product.title === "string" ? product.title : null,
+  };
+}
+
+// Checks every accepted Creator Connections candidate (see
+// src/data/creator-connections.ts) against its real Keepa price history and
+// only returns the ones that clear the same MIN_REAL_DISCOUNT bar as every
+// other deal on the site. A campaign that isn't a genuine deal right now is
+// silently skipped — accepting it earns a boosted commission on Amazon's
+// side, but that's irrelevant to whether it belongs on Only Good Deals.
+export async function fetchCreatorConnectionDeals(): Promise<Deal[]> {
+  const checkedAt = new Date();
+
+  const results = await Promise.all(
+    creatorConnectionCandidates.map(async (candidate) => {
+      const stats = await fetchKeepaProductStats(candidate.asin);
+      const pricing = stats ? verifiedPricing(stats.currentPriceCents, stats.avgPriceCents) : null;
+      if (!pricing) return null;
+
+      const deal: Deal = {
+        id: stableIdFromAsin(candidate.asin),
+        title: stats?.title ?? `${candidate.brand} — ${candidate.campaignName}`,
+        category: "Home",
+        price: pricing.price,
+        originalPrice: pricing.originalPrice,
+        note: "A Creator Connections partner product — still checked against real Keepa price history, same bar as every other deal here.",
+        verifiedAt: checkedAt.toISOString().slice(0, 10),
+        priceCheckedAt: checkedAt.toISOString(),
+        tag: "Partner deal",
+        asin: candidate.asin,
+        searchQuery: candidate.campaignName,
+        affiliateUrlOverride: candidate.affiliateUrl,
+      };
+      return deal;
+    })
+  );
+
+  return results.filter((deal): deal is Deal => deal !== null);
 }

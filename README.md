@@ -44,6 +44,20 @@ account's live rate card (Associates Central > Rate Plan): Prime $3/signup,
 Audible $5 trial / $10 paid monthly, Kindle Unlimited $3/trial, Music
 Unlimited $3/trial.
 
+## Creator Connections (partner deals)
+
+Amazon's Creator Connections program lets you accept individual brand
+campaigns for a boosted commission rate — but that's a per-ASIN, per-campaign
+deal with Amazon, and says nothing about whether the product is actually
+discounted. `src/data/creator-connections.ts` holds a list of ASINs you've
+accepted; `fetchCreatorConnectionDeals()` in `src/lib/keepa.ts` checks each
+one against Keepa's real price history and only shows it if it clears the
+same 15%+ real-discount bar as every other deal on the site. A campaign
+that isn't a genuine deal right now is silently skipped, not shown anyway —
+the extra commission is never a reason to lower the bar. To add one: accept
+the campaign in Associates Central (Promotions > Creator Connections), then
+add its ASIN and the Affiliate+ link it gives you to that file.
+
 ## Next step
 
 Once this Associates account is approved for the Amazon Product
