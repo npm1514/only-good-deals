@@ -183,6 +183,29 @@ export function stableIdFromAsin(asin: string): number {
 
 const MIN_REAL_DISCOUNT = 0.15;
 
+// A Deal Query row's current/avg price is a snapshot from whenever Keepa
+// last rescanned that ASIN -- for a low-traffic product that can be a long
+// time ago, and the "deal" can have quietly expired since (real example: a
+// listing shown here at $12.99 that was back to $49.99 on Amazon by the
+// time it was clicked). 24h is a starting judgment call, not a measured
+// number -- tight enough to drop obviously-expired snapshots, loose enough
+// not to starve the page of infrequently-rescanned but still-valid deals.
+const MAX_DEAL_AGE_HOURS = 24;
+
+function isFreshEnough(lastUpdate: string | null, checkedAt: Date): boolean {
+  if (!lastUpdate) return false;
+  const ageMs = checkedAt.getTime() - new Date(lastUpdate).getTime();
+  return ageMs <= MAX_DEAL_AGE_HOURS * 60 * 60 * 1000;
+}
+
+// Most-recently-verified first, so a "no fresh candidates at all" fallback
+// still leads with whatever is least stale rather than an arbitrary order.
+function byFreshnessDesc(a: KeepaCandidate, b: KeepaCandidate): number {
+  const aTime = a.lastUpdate ? new Date(a.lastUpdate).getTime() : 0;
+  const bTime = b.lastUpdate ? new Date(b.lastUpdate).getTime() : 0;
+  return bTime - aTime;
+}
+
 // The one quality gate every deal on the site has to clear, regardless of
 // where it was sourced from (live Keepa scan or a Creator Connections
 // candidate) — real current price meaningfully below the real 90-day
@@ -239,7 +262,14 @@ export async function fetchLiveHomepageDeals(excludeAsins: Set<string>): Promise
   const candidates = await fetchKeepaCandidates(HOMEPAGE_LIVE_FILTERS);
   const checkedAt = new Date();
 
-  const deals = buildDeals(candidates, checkedAt, excludeAsins);
+  // Drop snapshots too old to trust (see MAX_DEAL_AGE_HOURS above). Only
+  // fall back to the stale pool -- freshest first -- if literally nothing
+  // qualifies as fresh, so a quiet Keepa rescan gap never empties the grid.
+  const freshCandidates = candidates.filter((c) => isFreshEnough(c.lastUpdate, checkedAt));
+  const usableCandidates =
+    freshCandidates.length > 0 ? freshCandidates : [...candidates].sort(byFreshnessDesc);
+
+  const deals = buildDeals(usableCandidates, checkedAt, excludeAsins);
   if (deals.length > 0 || excludeAsins.size === 0) return deals;
 
   // Every qualifying deal today has already been shown to this visitor
@@ -247,7 +277,7 @@ export async function fetchLiveHomepageDeals(excludeAsins: Set<string>): Promise
   // rather than render an empty grid, show them again instead of leaving
   // the page looking broken. Small qualifying pools cycle back faster than
   // large ones; that's an acceptable trade for never showing nothing.
-  return buildDeals(candidates, checkedAt, new Set());
+  return buildDeals(usableCandidates, checkedAt, new Set());
 }
 
 function buildDeals(candidates: KeepaCandidate[], checkedAt: Date, excludeAsins: Set<string>): Deal[] {

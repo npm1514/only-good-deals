@@ -127,7 +127,19 @@ describe("fetchLiveHomepageDeals", () => {
     jest.resetModules();
   });
 
-  function dealRow(asin: string, currentCents: number, avgCents: number) {
+  // Keepa Time: minutes since their custom epoch -- see keepaTimeToDate in
+  // keepa.ts. Mirrors that conversion in reverse so tests can hand back a
+  // "how many hours ago" lastUpdate instead of a raw epoch number.
+  function keepaMinutesAgo(hours: number): number {
+    return Math.round(Date.now() / 60000) - 21564000 - hours * 60;
+  }
+
+  function dealRow(
+    asin: string,
+    currentCents: number,
+    avgCents: number,
+    lastUpdateHoursAgo = 0
+  ) {
     return {
       asin,
       title: `Widget ${asin}`,
@@ -135,7 +147,7 @@ describe("fetchLiveHomepageDeals", () => {
       current: [undefined, currentCents],
       avg: [undefined, [undefined, avgCents]],
       deltaPercent: [undefined, [undefined, 50]],
-      lastUpdate: -1,
+      lastUpdate: keepaMinutesAgo(lastUpdateHoursAgo),
     };
   }
 
@@ -171,5 +183,31 @@ describe("fetchLiveHomepageDeals", () => {
     const deals = await fetchLiveHomepageDeals(new Set());
 
     expect(deals).toEqual([]);
+  });
+
+  it("drops a deal whose price snapshot is too old to trust, even though it would otherwise qualify", async () => {
+    mockDealsResponse([
+      dealRow("B000AAA01", 1299, 4359, 48), // stale -- e.g. the price has since recovered on Amazon
+      dealRow("B000BBB01", 2999, 4999, 1), // fresh
+    ]);
+
+    const { fetchLiveHomepageDeals } = await import("./keepa");
+    const deals = await fetchLiveHomepageDeals(new Set());
+
+    expect(deals.map((d) => d.asin)).toEqual(["B000BBB01"]);
+  });
+
+  it("falls back to the least-stale snapshots rather than an empty grid when nothing is fresh", async () => {
+    mockDealsResponse([
+      dealRow("B000AAA01", 1999, 3999, 72),
+      dealRow("B000BBB01", 2999, 4999, 30),
+    ]);
+
+    const { fetchLiveHomepageDeals } = await import("./keepa");
+    const deals = await fetchLiveHomepageDeals(new Set());
+
+    // Both are stale, so neither is dropped -- freshest-first is only about
+    // ordering here since buildDeals doesn't truncate by itself.
+    expect(deals.map((d) => d.asin)).toEqual(["B000BBB01", "B000AAA01"]);
   });
 });

@@ -45,7 +45,7 @@ export default function DealCard({ deal }: { deal: Deal }) {
         <p className="category">{deal.category}</p>
         <h3>{deal.title}</h3>
         <p className="note">{deal.note}</p>
-        <div className="price-row">
+        <div className="price-row" data-nosnippet>
           <strong>${deal.price.toFixed(2)}</strong>
           {deal.originalPrice > deal.price && <del>${deal.originalPrice.toFixed(2)}</del>}
         </div>

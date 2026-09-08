@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "pretest": "yarn install --check-files",
     "test": "jest",
     "test:watch": "jest --watch"
   },
